@@ -79,25 +79,18 @@ impl Bucket {
 
     loop {
       select! {
-        recv(ticker) -> message => match message {
-          Err(e) => {
-            error!(?e);
+        recv(ticker) -> _ => match bucket.upgrade() {
+          None => {
+            debug!("cannot upgrade Weak ref to Arc, exiting");
             return;
           }
-          Ok(_) => match bucket.upgrade() {
-            None => {
-              debug!("cannot upgrade Weak ref to Arc, exiting");
-              return;
-            }
-            Some(bucket) => {
-              let _ = bucket
-                .tokens
-                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |tokens| {
-                  Some(std::cmp::min(tokens + 1, bucket.config.requests_per_second))
-                });
-
-            }
-          },
+          Some(bucket) => {
+            let _ = bucket
+              .tokens
+              .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |tokens| {
+                Some(std::cmp::min(tokens + 1, bucket.config.requests_per_second))
+              });
+          }
         },
         recv(receiver) -> message => {
           // An error is returned when we try to received from a channel that has been closed
